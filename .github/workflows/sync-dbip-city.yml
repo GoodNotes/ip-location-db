@@ -1,0 +1,54 @@
+name: Sync DB-IP city datasets
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Daily, UTC. Avoid minute 0 because GitHub warns high-load schedules can be delayed/dropped.
+    - cron: "23 2 * * *"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sync-dbip-city
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download latest sapics DB-IP city assets
+        run: |
+          set -euo pipefail
+
+          curl -fsSLo dbip-city-ipv4-num.csv.gz \
+            https://github.com/sapics/ip-location-db/releases/download/latest/dbip-city-ipv4-num.csv.gz
+
+          curl -fsSLo dbip-city-ipv6-num.csv.gz \
+            https://github.com/sapics/ip-location-db/releases/download/latest/dbip-city-ipv6-num.csv.gz
+
+          curl -fsSLo DBIP-LICENSE \
+            https://raw.githubusercontent.com/sapics/ip-location-db/main/dbip-city/DBIP-LICENSE
+
+          gzip -t dbip-city-ipv4-num.csv.gz
+          gzip -t dbip-city-ipv6-num.csv.gz
+
+      - name: Commit changes
+        run: |
+          set -euo pipefail
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add dbip-city-ipv4-num.csv.gz dbip-city-ipv6-num.csv.gz DBIP-LICENSE
+
+          if git diff --cached --quiet -- dbip-city-ipv4-num.csv.gz dbip-city-ipv6-num.csv.gz; then
+            echo "No dataset changes."
+            exit 0
+          fi
+
+          git commit -m "Update DB-IP city datasets"
+          git push
