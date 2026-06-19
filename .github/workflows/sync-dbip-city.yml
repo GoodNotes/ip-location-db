@@ -8,6 +8,7 @@ on:
 
 permissions:
   contents: write
+  pull-requests: write
 
 concurrency:
   group: sync-dbip-city
@@ -36,19 +37,38 @@ jobs:
           gzip -t dbip-city-ipv4-num.csv.gz
           gzip -t dbip-city-ipv6-num.csv.gz
 
-      - name: Commit changes
+      - name: Check for dataset changes
+        id: dataset-changes
         run: |
           set -euo pipefail
 
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-
-          git add dbip-city-ipv4-num.csv.gz dbip-city-ipv6-num.csv.gz DBIP-LICENSE
-
-          if git diff --cached --quiet -- dbip-city-ipv4-num.csv.gz dbip-city-ipv6-num.csv.gz; then
+          if git diff --quiet -- dbip-city-ipv4-num.csv.gz dbip-city-ipv6-num.csv.gz; then
             echo "No dataset changes."
-            exit 0
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
           fi
 
-          git commit -m "Update DB-IP city datasets"
-          git push
+      - name: Create pull request
+        if: steps.dataset-changes.outputs.changed == 'true'
+        uses: peter-evans/create-pull-request@v8
+        with:
+          add-paths: |
+            dbip-city-ipv4-num.csv.gz
+            dbip-city-ipv6-num.csv.gz
+            DBIP-LICENSE
+          branch: sync/dbip-city-datasets
+          commit-message: Update DB-IP city datasets
+          delete-branch: true
+          title: Update DB-IP city datasets
+          body: |
+            Automated DB-IP city dataset refresh.
+
+            Source assets:
+            - https://github.com/sapics/ip-location-db/releases/download/latest/dbip-city-ipv4-num.csv.gz
+            - https://github.com/sapics/ip-location-db/releases/download/latest/dbip-city-ipv6-num.csv.gz
+
+            Validation:
+            - `gzip -t dbip-city-ipv4-num.csv.gz`
+            - `gzip -t dbip-city-ipv6-num.csv.gz`
+          team-reviewers: accounts-deployers
